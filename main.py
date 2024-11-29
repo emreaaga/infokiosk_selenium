@@ -1,241 +1,349 @@
-import os
+import threading
+import queue
 import time
+import tkinter as tk
+from tkinter import ttk
+from selenium.webdriver.common.keys import Keys
+from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium import webdriver
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from selenium.common.exceptions import NoSuchElementException, WebDriverException
 from selenium.webdriver.chrome.service import Service
-
-# Импортируем функции из utils.py
-from utils import (
-    manage_virtual_keyboard,
-    print_receipt
-)
-
-# Настройка браузера
-chrome_options = Options()
-chrome_options.add_argument("--kiosk")
-chrome_options.add_argument("--disable-gpu")
-chrome_options.add_argument("--no-sandbox")
-chrome_options.add_argument("--disable-software-rasterizer")
-chrome_options.add_argument("--disable-infobars")
-
-#Создание веб-драйвера (предполагаем, что chromedriver установлен в PATH)
-driver = webdriver.Chrome(options=chrome_options)
-
-# Укажи путь к chromedriver.exe
-# driver_path = "C:\\info_kiosk\\chromedriver.exe"  # Замени на реальный путь
-# Создание службы для ChromeDriver
-# service = Service(driver_path)
-# Создание веб-драйвера
-# driver = webdriver.Chrome(service=service, options=chrome_options)
+from utils import print_receipt
 
 
-try:
-    # Список маршрутов, которые перенаправляем на домашнюю страницу
-    redirect_urls = [
-        "https://avtoticket.uz/faq",
-        "https://avtoticket.uz/web-difficult-to-reservation",
-        "https://avtoticket.uz/about-us",
-    ]
+class VirtualKeyboard(tk.Tk):
+    def __init__(self, send_key_callback):
+        super().__init__()
+        self.title("Virtual Keyboard")
+        self.geometry("800x300")
+        self.overrideredirect(True)
+        self.attributes("-topmost", True)
+        self.place_at_bottom()
+        self.send_key_callback = send_key_callback
+        self.setup_style()
+        self.create_keyboard()
+
+    def setup_style(self):
+        """Sets up ttk styles for the keyboard."""
+        style = ttk.Style(self)
+        style.theme_use("clam")
+
+        style.configure(
+            "Keyboard.TButton",
+            font=("Helvetica", 14),
+            padding=10,
+            relief="flat",
+            background="#F5F5F5",
+            foreground="#000",
+            borderwidth=0
+        )
+
+        style.configure(
+            "Special.TButton",
+            font=("Helvetica", 14, "bold"),
+            padding=10,
+            background="#FFDDC1",
+            foreground="#000",
+            borderwidth=0,
+            relief="flat"
+        )
+        style.configure(
+            "Space.TButton",
+            font=("Helvetica", 14),
+            padding=10,
+            background="#E0E0E0",
+            foreground="#000",
+            borderwidth=0,
+            relief="flat"
+        )
+
+    def place_at_bottom(self):
+        """Places the keyboard window at the bottom of the screen."""
+        self.update_idletasks()
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        window_width = 950
+        window_height = 300
+
+        x = (screen_width - window_width) // 2
+        y = screen_height - window_height
+        self.geometry(f"{window_width}x{window_height}+{x}+{y}")
+
     
-    # Создаем драйвер
-    driver.get("https://avtoticket.uz")
-    print("Ожидание действий пользователя...")
+    def create_keyboard(self):
+        """Creates the virtual keyboard using ttk.Button."""
+        keys = [
+            ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "Backspace"],
+            ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
+            ["a", "s", "d", "f", "g", "h", "j", "k", "l"],
+            ["z", "x", "c", "v", "b", "n", "m"]
+        ]
+        extra_keys = [
+            ["Space"]
+        ]
 
-    virtual_keyboard_open = False  # Состояние виртуальной клавиатуры
-    last_url = None  # Последний URL для отслеживания изменений страницы
+        keyboard_frame = ttk.Frame(self)
+        keyboard_frame.pack(expand=True, padx=10, pady=10)
 
-    while True:
-        current_url = driver.current_url
-        
-        if current_url != last_url:
-            last_url = current_url
-            print(f"Перешли на новую страницу: {current_url}")
-        
-        # Перенаправление для страниц из списка redirect_urls
-        if any(current_url.startswith(url.strip("/")) for url in redirect_urls):
-            print(f"Страница {current_url} не разрешена. Перенаправляем на главную страницу.")
-            driver.get("https://avtoticket.uz")
-            continue
+        # Создаем ряды клавиш
+        for row_idx, row in enumerate(keys):
+            row_frame = ttk.Frame(keyboard_frame)
+            row_frame.pack(side="top", pady=5)
+            for key in row:
+                button_style = (
+                    "Special.TButton" if key in {"Backspace", "Shift"} else
+                    "Space.TButton" if key == "Space" else
+                    "Keyboard.TButton"
+                )
+                button_width = 12 if key == "Space" else 5
+                button = ttk.Button(
+                    row_frame,
+                    text=key,
+                    style=button_style,
+                    width=button_width,
+                    command=lambda k=key: self.key_pressed(k),
+                )
+                button.pack(side="left", padx=5)
 
-        
-        # На странице "/tickets/"
-        if "/tickets/" in current_url:
+        extra_frame = ttk.Frame(keyboard_frame)
+        extra_frame.pack(side="top", pady=5)
+        for key in extra_keys[0]:
+            button_style = "Space.TButton" if key == "Space" else "Keyboard.TButton"
+            button = ttk.Button(
+                extra_frame,
+                text=key,
+                style=button_style,
+                width=6 if key == "Space" else 3,
+                command=lambda k=key: self.key_pressed(k),
+            )
+            button.pack(side="left", padx=5)
+
+    def key_pressed(self, key):
+        """Handles key press events."""
+        if self.send_key_callback:
+            self.send_key_callback(key)
+
+    def open(self):
+        """Opens the virtual keyboard window."""
+        self.deiconify()
+
+    def close(self):
+        """Closes the virtual keyboard window."""
+        self.withdraw()
+
+# Virtual Keyboard Management Functions
+_keyboard_instance = None
+
+def position_keyboard_above_button(driver):
+        """Позиционирует клавиатуру выше кнопки 'Оплата'."""
+        try:
+            # Найти кнопку "Оплата"
+            button = driver.find_element(By.CLASS_NAME, "next_blue_btn")
+
+            # Получить координаты кнопки
+            button_location = button.location  # {'x': ..., 'y': ...}
+            button_y = button_location['y']  # Верхняя граница кнопки
+
+            # Параметры окна
+            screen_width = driver.execute_script("return window.innerWidth;")  # Ширина экрана
+            keyboard_width = 950
+            keyboard_height = 300
+
+            # Расчёт положения клавиатуры
+            x = (screen_width - keyboard_width) // 2  # Центрируем по горизонтали
+            y = max(0, button_y - keyboard_height - 20)  # Устанавливаем чуть выше кнопки
+
+            # Устанавливаем новое положение клавиатуры
+            _keyboard_instance.geometry(f"{keyboard_width}x{keyboard_height}+{x}+{y}")
+            print(f"Клавиатура перемещена выше кнопки: x={x}, y={y}")
+        except NoSuchElementException:
+            print("Кнопка 'Оплата' не найдена. Клавиатура остаётся в стандартном положении.")
+        except Exception as e:
+            print(f"Ошибка при размещении клавиатуры: {e}")
+
+def start_keyboard(send_key_callback):
+    """Starts the virtual keyboard."""
+    global _keyboard_instance
+    if _keyboard_instance is None:
+        _keyboard_instance = VirtualKeyboard(send_key_callback)
+        _keyboard_instance.protocol("WM_DELETE_WINDOW", _keyboard_instance.close)
+
+def open_keyboard():
+    """Opens the virtual keyboard."""
+    if _keyboard_instance:
+        _keyboard_instance.open()
+        print("Keyboard opened.")
+    else:
+        print("Keyboard instance not found.")
+
+def close_keyboard():
+    """Closes the virtual keyboard."""
+    if _keyboard_instance:
+        _keyboard_instance.close()
+        print("Keyboard closed.")
+    else:
+        print("Keyboard instance not found.")
+
+def stop_keyboard():
+    """Stops the virtual keyboard."""
+    global _keyboard_instance
+    if _keyboard_instance:
+        _keyboard_instance.destroy()
+        _keyboard_instance = None
+        print("Keyboard stopped.")
+    else:
+        print("Keyboard instance not found.")
+
+_keyboard_started = False
+
+def manage_virtual_keyboard(open_kb, send_key_callback=None):
+    """Manages the virtual keyboard."""
+    global _keyboard_started
+    if open_kb:
+        print("Opening virtual keyboard")
+        if not _keyboard_started:
+            if send_key_callback is None:
+                print("Error: send_key_callback is required to start the keyboard.")
+                return
+            start_keyboard(send_key_callback)
+            _keyboard_started = True
+        open_keyboard()
+    else:
+        print("Closing virtual keyboard")
+        if _keyboard_started:
+            close_keyboard()
+
+keypress_queue = queue.Queue()
+
+def send_key_callback(key):
+    keypress_queue.put(key)
+
+def selenium_thread_function():
+    chrome_options = Options()
+    chrome_options.add_argument("--kiosk")
+    chrome_options.add_argument("--disable-gpu")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-software-rasterizer")
+    chrome_options.add_argument("--disable-infobars")
+
+    # driver = webdriver.Chrome(options=chrome_options)
+    driver_path = "C:\\info_kiosk\\chromedriver.exe"  # Замени на реальный путь
+    service = Service(driver_path)
+    driver = webdriver.Chrome(service=service, options=chrome_options)
+    
+    try:
+        redirect_urls = [
+            "https://avtoticket.uz/faq",
+            "https://avtoticket.uz/web-difficult-to-reservation",
+            "https://avtoticket.uz/about-us",
+            "https://avtoticket.uz/ticket-recovery",
+        ]
+        driver.get("https://avtoticket.uz")
+
+        current_fields_state = False
+        last_url = None 
+        last_check_time = time.time()
+        page_check_interval = 2
+
+
+        while True:
             try:
-                # Проверяем наличие всех необходимых полей
-                name_input = driver.find_element(By.ID, "nd-name0")  # Поле для имени пассажира
-                tel_input = driver.find_element(By.ID, "nd-tel0")  # Поле для номера телефона
-                email_input = driver.find_element(By.ID, "nd-email0")  # Поле для эл. почты
-                print("Найдены поля для имени, телефона и email")
-
-                # Если клавиатура не включена, включаем
-                if not virtual_keyboard_open:
-                    manage_virtual_keyboard(True)
-                    virtual_keyboard_open = True
-
-            except NoSuchElementException:
-                # Если полей нет, выключаем клавиатуру (если она включена)
-                print("Поля ввода не найдены.")
-                if virtual_keyboard_open:
-                    manage_virtual_keyboard(False)
-                    virtual_keyboard_open = False
-
-        # На странице "/payment-payme/"
-        elif "/payment-payme/" in current_url:
-            try:
-                # Проверяем наличие хотя бы одного из полей
-                field_found = False
-                try:
-                    card_number_input = driver.find_element(By.ID, "nd-name")
-                    field_found = True
-                    print("Найдено поле: Номер карты")
-                except NoSuchElementException:
-                    pass
-
-                try:
-                    ex_date_input = driver.find_element(By.ID, "nd-tel")
-                    field_found = True
-                    print("Найдено поле: Срок действия карты")
-                except NoSuchElementException:
-                    pass
-
-                try:
-                    code_input = driver.find_element(By.ID, "brr")
-                    field_found = True
-                    print("Найдено поле: Код из SMS")
-                except NoSuchElementException:
-                    pass
-
-                # Если состояние полей изменилось, включаем/выключаем клавиатуру
-                if field_found and not current_fields_state:
-                    manage_virtual_keyboard(True)
-                    virtual_keyboard_open = True
-                    current_fields_state = True
-                elif not field_found and current_fields_state:
-                    manage_virtual_keyboard(False)
-                    virtual_keyboard_open = False
-                    current_fields_state = False
-
-            except Exception as e:
-                print(f"Ошибка на странице /payment-payme/: {e}")
-                if current_fields_state:
-                    manage_virtual_keyboard(False)
-                    virtual_keyboard_open = False
-                    current_fields_state = False
-
-
-        elif "/bought-tickets/" in current_url:
-            print("Находимся на странице с купленными билетами.")
-            try:
-                ticket_elements = driver.find_elements(By.CSS_SELECTOR, "div.tickets_all_child")  # Все билеты
-
-                if ticket_elements:
-                    print(f"Найдено {len(ticket_elements)} билетов.")
-
-                    for i, ticket_element in enumerate(ticket_elements, start=1):
-                        # Собираем данные о билете
-                        labels = ticket_element.find_elements(By.CSS_SELECTOR, "p.tickets_all_body_1pp")
-                        values = ticket_element.find_elements(By.CSS_SELECTOR, "h5.tickets_all_body_1_h5")
-                        qr_element = ticket_element.find_element(By.CSS_SELECTOR, "img[src*='qr.png']")
-                        qr_url = qr_element.get_attribute("src")
-
-                        # Формируем словарь с данными билета
-                        receipt_data = {
-                            label.text.strip().replace(":", ""): value.text.strip()
-                            for label, value in zip(labels, values)
-                        }
-
-                        # Печатаем билет
-                        print(f"Печать билета №{i}...")
-                        print_receipt(receipt_data, qr_url, output_path=f"ticket_{i}.pdf")
-
-                    # После печати перенаправляем на главную страницу
-                    driver.get("https://avtoticket.uz")
-                    print("Перенаправляем на главную страницу.")
-
+                key = keypress_queue.get(timeout=0.1)
+                active_element = driver.switch_to.active_element
+                if key == 'Backspace':
+                    active_element.send_keys(Keys.BACKSPACE)
+                elif key == 'Space':
+                    active_element.send_keys(' ')
                 else:
-                    print("Билеты не найдены.")
+                    active_element.send_keys(key)
+            except queue.Empty:
+                pass  # No key press in the last 0.1 seconds
+            except WebDriverException as e:
+                print(f"Error sending key: {e}")
 
-            except Exception as e:
-                print(f"Ошибка при обработке страницы с купленными билетами: {e}")
+            # Check the page state every 2 seconds
+            if time.time() - last_check_time >= page_check_interval:
+                last_check_time = time.time()
 
-        
-        # На странице восстановления билета "/ticket-recovery/"
-        elif "/ticket-recovery" in current_url:
-            print("Находимся на странице восстановления билета.")
-            try:
-                # Проверяем наличие поля ввода номера телефона
-                while True:
+                current_url = driver.current_url
+                if current_url != last_url:
+                    last_url = current_url
+
+                if any(current_url.startswith(url.strip("/")) for url in redirect_urls):
+                    driver.get("https://avtoticket.uz")
+                    continue
+
+                if "/tickets/" in current_url:
                     try:
-                        # Проверяем, существует ли поле ввода
-                        phone_input = driver.find_element(By.ID, "brr")
-                        print("Найдено поле ввода номера телефона.")
+                        name_input = driver.find_element(By.ID, "nd-name0")
+                        tel_input = driver.find_element(By.ID, "nd-tel0")
+                        email_input = driver.find_element(By.ID, "nd-email0")
+                        print("Found fields for name, phone, and email")
 
-                        # Если клавиатура не включена, включаем
-                        if not virtual_keyboard_open:
-                            manage_virtual_keyboard(True)
-                            virtual_keyboard_open = True
-
-                        # Задержка перед повторной проверкой
-                        time.sleep(2)
+                        if not current_fields_state:
+                            manage_virtual_keyboard(True, send_key_callback)
+                            current_fields_state = True
+                            position_keyboard_above_button(driver)
 
                     except NoSuchElementException:
-                        # Поле ввода номера телефона исчезло
-                        print("Поле ввода номера телефона больше не найдено. Переходим к поиску QR-кода.")
-
-                        # Если клавиатура включена, выключаем
-                        if virtual_keyboard_open:
+                        print("Input fields not found.")
+                        if current_fields_state:
                             manage_virtual_keyboard(False)
-                            virtual_keyboard_open = False
+                            current_fields_state = False
 
-                        # Переходим к поиску QR-кода
+                elif "/payment-payme/" in current_url:
+                    try:
+                        field_found = False
                         try:
-                            qr_element = WebDriverWait(driver, 10).until(
-                                EC.presence_of_element_located((By.CSS_SELECTOR, "img[src*='qr.png']"))
-                            )
-                            qr_url = qr_element.get_attribute("src")
+                            card_number_input = driver.find_element(By.ID, "nd-name")
+                            field_found = True
+                            print("Found field: Card Number")
+                        except NoSuchElementException:
+                            pass
 
-                            labels = driver.find_elements(By.CSS_SELECTOR, "p.tickets_all_body_1pp, p.tickets_all_child_body_footerpp_2")
-                            values = driver.find_elements(By.CSS_SELECTOR, "h5.tickets_all_body_1_h5, h5.tickets_all_child_body_footerh5_2")
+                        try:
+                            ex_date_input = driver.find_element(By.ID, "nd-tel")
+                            field_found = True
+                            print("Found field: Card Expiry Date")
+                        except NoSuchElementException:
+                            pass
 
-                            if labels and values and qr_url:
-                                print("Данные чека найдены!")
-                                receipt_data = {label.text.strip().replace(":", ""): value.text.strip() for label, value in zip(labels, values)}
-                                print_receipt(receipt_data, qr_url, width_mm=58, height_mm=100)
+                        try:
+                            code_input = driver.find_element(By.ID, "brr")
+                            field_found = True
+                            print("Found field: SMS Code")
+                        except NoSuchElementException:
+                            pass
 
-                                # Перенаправляем на главную страницу
-                                driver.get("https://avtoticket.uz")
-                                print("Перенаправляем на главную страницу.")
-                                break
+                        if field_found and not current_fields_state:
+                            manage_virtual_keyboard(True, send_key_callback)
+                            current_fields_state = True
+                        elif not field_found and current_fields_state:
+                            manage_virtual_keyboard(False)
+                            current_fields_state = False
 
-                        except TimeoutException:
-                            print("Не удалось найти чек или QR-код.")
-                        except Exception as e:
-                            print(f"Ошибка при поиске данных чека: {e}")
-                        break
+                    except Exception as e:
+                        print(f"Error on /payment-payme/ page: {e}")
+                        if current_fields_state:
+                            manage_virtual_keyboard(False)
+                            current_fields_state = False
 
-            except Exception as e:
-                print(f"Ошибка на странице восстановления билета: {e}")
+                else:
+                    if current_fields_state:
+                        print("Closing keyboard as the page does not require input.")
+                        manage_virtual_keyboard(False)
+                        current_fields_state = False
 
-        # Если URL не соответствуеkт ожидаемым, выключаем клавиатуру
-        else:
-            if virtual_keyboard_open:
-                print("Выключаем клавиатуру, так как страница не требует ввода.")
-                manage_virtual_keyboard(False)
-                virtual_keyboard_open = False
-                current_fields_state = False
+    except KeyboardInterrupt:
+        print("Script stopped by user.")
 
-        # Короткая пауза перед следующей итерацией
-        time.sleep(2)
+    finally:
+        if current_fields_state:
+            manage_virtual_keyboard(False)
+        driver.quit()
 
-except KeyboardInterrupt:
-    print("Остановка скрипта пользователем.")
-    
-finally:
-    # Закрываем виртуальную клавиатуру при завершении работы
-    if virtual_keyboard_open:
-        manage_virtual_keyboard(False)
-    driver.quit()
+start_keyboard(send_key_callback)
+selenium_thread = threading.Thread(target=selenium_thread_function, daemon=True)
+selenium_thread.start()
+tk.mainloop()

@@ -61,7 +61,7 @@ def print_receipt(receipt_data, qr_url, output_path="receipt.pdf", width_mm=58, 
         y_position = height_mm - 46
         for key, value in receipt_data.items():
             if key not in ["Рейс"]:
-                c.drawString(2 mm, y_position * mm, f"{key}:")
+                c.drawString(2 * mm, y_position * mm, f"{key}:")
                 c.drawRightString((width_mm - 2) * mm, y_position * mm, f"{value}")
                 y_position -= 4
 
