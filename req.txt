@@ -1,0 +1,4 @@
+selenium 
+reportlab 
+pywin32 
+requests
