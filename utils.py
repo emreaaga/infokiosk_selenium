@@ -1,93 +1,70 @@
-import os
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.pdfbase import pdfmetrics
-from reportlab.lib.pagesizes import mm
-from reportlab.pdfgen import canvas
-from reportlab.lib.utils import ImageReader
-from io import BytesIO
-# import win32print
-# import win32api
 import requests
+from PIL import Image, ImageWin
+# import win32print
+# import win32ui
+import os
 
-pdfmetrics.registerFont(TTFont('DejaVu', 'DejaVuSans.ttf'))
-
-def manage_virtual_keyboard(open_keyboard):
-    '''
-    Управляет виртуальной клавиатурой на Linux.
-    '''
-    if open_keyboard:
-        print('Открываем клаву')
-        os.system("osk") 
-    else:
-        print('Закрываем клаву')
-        os.system("taskkill /IM osk.exe /F")
-
-def fetch_qr_image(qr_url):
-    '''
-    Загружает изображение QR-кода по указанному URL и возвращает его в виде байтового потока для дальнейшего использования.
-    '''
+def download_ticket(url, output_path="ticket.png"):
+    """
+    Скачивает чек по указанному URL и сохраняет его локально.
+    """
     try:
-        response = requests.get(qr_url)
+        response = requests.get(url, stream=True)
         response.raise_for_status()
-        return BytesIO(response.content)
+        with open(output_path, "wb") as file:
+            file.write(response.content)
+        print(f"Чек успешно скачан: {output_path}")
+        return output_path
     except Exception as e:
-        print(f"Ошибка загрузки QR-кода: {e}")
+        print(f"Ошибка при скачивании чека: {e}")
         return None
 
-def print_receipt(receipt_data, qr_url, output_path="receipt.pdf", width_mm=58, height_mm=100):
+# def print_image(file_path):
+#     """
+#     Отправляет изображение на печать через термопринтер.
+#     """
+#     try:
+#         # Указываем принтер
+#         printer_name = win32print.GetDefaultPrinter()  # Или явно укажи имя принтера
+
+#         # Загружаем изображение
+#         image = Image.open(file_path)
+
+#         # Подготовка к печати
+#         hprinter = win32print.OpenPrinter(printer_name)
+#         hdc = win32ui.CreateDC()
+#         hdc.CreatePrinterDC(printer_name)
+#         hdc.StartDoc("Печать билета")
+#         hdc.StartPage()
+
+#         # Подгоняем изображение под ширину термопринтера
+#         printer_width = 576  # Ширина термопринтера (зависит от модели, например, 384px)
+#         image = image.resize((printer_width, int(printer_width * image.size[1] / image.size[0])))
+
+#         # Печать изображения
+#         dib = ImageWin.Dib(image)
+#         dib.draw(hdc.GetHandleOutput(), (0, 0, image.width, image.height))
+
+#         hdc.EndPage()
+#         hdc.EndDoc()
+#         hdc.DeleteDC()
+#         win32print.ClosePrinter(hprinter)
+
+#         print(f"Файл {file_path} успешно отправлен на печать.")
+#     except Exception as e:
+#         print(f"Ошибка при печати: {e}")
+
+def process_and_print_ticket(download_url):
     """
-    Создает и сохраняет PDF для одного билета, отправляет его на печать, а затем удаляет файл.
+    Основная функция для скачивания и печати чека.
     """
-    qr_image_buffer = fetch_qr_image(qr_url)
-    if not qr_image_buffer:
-        print("Ошибка: QR-код не удалось загрузить.")
-        return
-    
-    try:
-        # Создаем PDF
-        c = canvas.Canvas(output_path, pagesize=(width_mm * mm, height_mm * mm))
-        c.setFont("DejaVu", 9)
+    file_path = download_ticket(download_url)
 
-        # Заголовок
-        c.setFont("DejaVu", 7)
-        c.drawCentredString((width_mm / 2) * mm, (height_mm - 10) * mm, f"Рейс: {receipt_data['Рейс']}")
+    # if file_path:
+    #     # Печатаем файл
+    #     print_image(file_path)
 
-        # Вставляем QR-код из байтов
-        qr_reader = ImageReader(qr_image_buffer)
-        c.drawImage(qr_reader, x=14 * mm, y=(height_mm - 42) * mm, width=30 * mm, height=30 * mm)
-
-        # Основная информация
-        c.setFont("DejaVu", 6)
-        y_position = height_mm - 46
-        for key, value in receipt_data.items():
-            if key not in ["Рейс"]:
-                c.drawString(2 * mm, y_position * mm, f"{key}:")
-                c.drawRightString((width_mm - 2) * mm, y_position * mm, f"{value}")
-                y_position -= 4
-
-        # Завершаем PDF
-        c.save()
-
-        print(f"PDF для билета сохранен: {output_path}")
-
-        # Отправляем PDF на печать
-        # win32api.ShellExecute(
-        #     0,
-        #     "print",
-        #     output_path,
-        #     None,
-        #     ".",
-        #     0
-        # )
-        print(f"Билет отправлен на печать: {output_path}")
-
-    except Exception as e:
-        print(f"Ошибка при создании и печати PDF: {e}")
-
-    finally:
-        # Удаляем файл после печати
-        if os.path.exists(output_path):
-            os.remove(output_path)
-            print(f"PDF-файл удален: {output_path}")
-        else:
-            print(f"Файл {output_path} не найден для удаления.")
+    #     # Удаляем файл после печати
+    #     if os.path.exists(file_path):
+    #         os.remove(file_path)
+    #         print(f"Временный файл {file_path} удален.")

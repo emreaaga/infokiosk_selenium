@@ -9,18 +9,20 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.common.exceptions import NoSuchElementException, WebDriverException
 from selenium.webdriver.chrome.service import Service
-from utils import print_receipt
+from utils import process_and_print_ticket
+import datetime
 
 
 class VirtualKeyboard(tk.Tk):
     def __init__(self, send_key_callback):
         super().__init__()
         self.title("Virtual Keyboard")
-        self.geometry("800x300")
+        self.geometry("800x300")  # Чуть шире и выше
         self.overrideredirect(True)
         self.attributes("-topmost", True)
         self.place_at_bottom()
         self.send_key_callback = send_key_callback
+        self.caps_lock_on = False  # Индикатор состояния Caps Lock
         self.setup_style()
         self.create_keyboard()
 
@@ -58,30 +60,32 @@ class VirtualKeyboard(tk.Tk):
             relief="flat"
         )
 
+
     def place_at_bottom(self):
         """Places the keyboard window at the bottom of the screen."""
         self.update_idletasks()
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
-        window_width = 950
-        window_height = 300
+        window_width = 1000  # Увеличил ширину окна
+        window_height = 320
 
         x = (screen_width - window_width) // 2
         y = screen_height - window_height
         self.geometry(f"{window_width}x{window_height}+{x}+{y}")
-
+        
     
     def create_keyboard(self):
         """Creates the virtual keyboard using ttk.Button."""
         keys = [
-            ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "Backspace"],
+            ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "Удалить"],
             ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
             ["a", "s", "d", "f", "g", "h", "j", "k", "l"],
-            ["z", "x", "c", "v", "b", "n", "m"]
+            ["z", "x", "c", "v", "b", "n", "m", ".", ",", "@"],
         ]
         extra_keys = [
-            ["Space"]
+            ["Смена регистра", "Пробел"]
         ]
+
 
         keyboard_frame = ttk.Frame(self)
         keyboard_frame.pack(expand=True, padx=10, pady=10)
@@ -92,11 +96,11 @@ class VirtualKeyboard(tk.Tk):
             row_frame.pack(side="top", pady=5)
             for key in row:
                 button_style = (
-                    "Special.TButton" if key in {"Backspace", "Shift"} else
-                    "Space.TButton" if key == "Space" else
+                    "Special.TButton" if key in {"Удалить", "Caps Lock"} else
+                    "Space.TButton" if key == "Пробел" else
                     "Keyboard.TButton"
                 )
-                button_width = 12 if key == "Space" else 5
+                button_width = 15 if key == "Удалить" else 35 if key == "Пробел" else 5
                 button = ttk.Button(
                     row_frame,
                     text=key,
@@ -106,23 +110,39 @@ class VirtualKeyboard(tk.Tk):
                 )
                 button.pack(side="left", padx=5)
 
+        # Добавляем дополнительные клавиши (Caps Lock и Пробел)
         extra_frame = ttk.Frame(keyboard_frame)
         extra_frame.pack(side="top", pady=5)
         for key in extra_keys[0]:
-            button_style = "Space.TButton" if key == "Space" else "Keyboard.TButton"
+            button_style = "Space.TButton" if key == "Пробел" else "Special.TButton"
+            button_width = 35 if key == "Пробел" else 12
             button = ttk.Button(
                 extra_frame,
                 text=key,
                 style=button_style,
-                width=6 if key == "Space" else 3,
+                width=button_width,
                 command=lambda k=key: self.key_pressed(k),
             )
             button.pack(side="left", padx=5)
 
     def key_pressed(self, key):
         """Handles key press events."""
-        if self.send_key_callback:
+        if key == "Смена регистра":
+            self.toggle_caps_lock()
+        elif key == "Удалить":
+            if self.send_key_callback:
+                self.send_key_callback("Backspace")
+        elif key == "Пробел":
+            if self.send_key_callback:
+                self.send_key_callback(" ")
+        elif self.send_key_callback:
+            if self.caps_lock_on and key.isalpha():
+                key = key.upper()
             self.send_key_callback(key)
+            
+    def toggle_caps_lock(self):
+        """Toggles Caps Lock state."""
+        self.caps_lock_on = not self.caps_lock_on       
 
     def open(self):
         """Opens the virtual keyboard window."""
@@ -227,17 +247,16 @@ def selenium_thread_function():
     chrome_options.add_argument("--disable-software-rasterizer")
     chrome_options.add_argument("--disable-infobars")
 
-    # driver = webdriver.Chrome(options=chrome_options)
-    driver_path = "C:\\info_kiosk\\chromedriver.exe"  # Замени на реальный путь
-    service = Service(driver_path)
-    driver = webdriver.Chrome(service=service, options=chrome_options)
+    driver = webdriver.Chrome(options=chrome_options)
+    # driver_path = "C:\\info_kiosk\\chromedriver.exe"
+    # service = Service(driver_path)
+    # driver = webdriver.Chrome(service=service, options=chrome_options)
     
     try:
         redirect_urls = [
             "https://avtoticket.uz/faq",
             "https://avtoticket.uz/web-difficult-to-reservation",
             "https://avtoticket.uz/about-us",
-            "https://avtoticket.uz/ticket-recovery",
         ]
         driver.get("https://avtoticket.uz")
 
@@ -328,7 +347,66 @@ def selenium_thread_function():
                         if current_fields_state:
                             manage_virtual_keyboard(False)
                             current_fields_state = False
+                            
+                elif "/bought-tickets/" in current_url:
+                    try:
+                        ticket_elements = driver.find_elements(By.CSS_SELECTOR, "div.tickets_all_child")
 
+                        if ticket_elements:
+                            print(f"Найдено {len(ticket_elements)} билетов.")
+                        
+                            for i, ticket_element in enumerate(ticket_elements, start=1):
+                                download_button = ticket_element.find_element(By.CLASS_NAME, "green_download_btn")
+                                download_url = download_button.get_attribute("href")
+
+                                process_and_print_ticket(download_url)
+
+                            driver.get("https://avtoticket.uz")
+
+                        else:
+                            print("Билеты не найдены.")
+
+                    except Exception as e:
+                        print(f"Ошибка при обработке страницы с купленными билетами: {e}")
+
+                elif "/ticket-recovery" in current_url:
+                    print("Находимся на странице восстановления билета.")
+                    try:
+                        # Проверяем наличие поля ввода номера телефона
+                        while True:
+                            try:
+                                # Проверяем, существует ли поле ввода
+                                phone_input = driver.find_element(By.ID, "brr")
+                                print("Найдено поле ввода номера телефона.")
+
+                                # Если клавиатура не включена, включаем
+                                if not virtual_keyboard_open:
+                                    manage_virtual_keyboard(True)
+                                    virtual_keyboard_open = True
+
+                                # Задержка перед повторной проверкой
+                                time.sleep(2)
+
+                            except NoSuchElementException:
+                                # Поле ввода номера телефона исчезло
+                                print("Поле ввода номера телефона больше не найдено. Переходим к поиску QR-кода.")
+
+                                # Если клавиатура включена, выключаем
+                                if virtual_keyboard_open:
+                                    manage_virtual_keyboard(False)
+                                    virtual_keyboard_open = False
+
+                                # Переходим к поиску QR-кода
+                                try:
+                                    # Code to find QR code and process tickets
+                                    pass
+                                except Exception as e:
+                                    print(f"Ошибка при поиске данных чека: {e}")
+                                break
+
+                    except Exception as e:
+                        print(f"Ошибка на странице восстановления билета: {e}")
+                
                 else:
                     if current_fields_state:
                         print("Closing keyboard as the page does not require input.")
