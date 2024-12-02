@@ -10,6 +10,9 @@ from selenium.webdriver.common.by import By
 from selenium.common.exceptions import NoSuchElementException, WebDriverException
 from selenium.webdriver.chrome.service import Service
 from utils import process_and_print_ticket
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException
 import datetime
 
 
@@ -372,40 +375,61 @@ def selenium_thread_function():
                 elif "/ticket-recovery" in current_url:
                     print("Находимся на странице восстановления билета.")
                     try:
-                        # Проверяем наличие поля ввода номера телефона
-                        while True:
+                        phone_input = WebDriverWait(driver, 2).until(
+                            EC.presence_of_element_located((By.ID, "brr"))
+                        )
+                        print("Найдено поле ввода номера телефона.")
+                        
+                        if not current_fields_state:
+                            manage_virtual_keyboard(True, send_key_callback)
+                            current_fields_state = True
+                            
+                    except TimeoutException:
+                        if current_fields_state:
+                            manage_virtual_keyboard(False)
+                            current_fields_state = False
+                        
+                        ticket_elements = WebDriverWait(driver, 10).until(
+                            EC.presence_of_all_elements_located((By.CLASS_NAME, "tickets_all_child"))
+                        )
+                        if not ticket_elements:
+                            print("Билеты не найдены.")
+                        else:
+                            print(f"Найдено {len(ticket_elements)} билетов.")
+                        
+                        # Текущая дата
+                        current_time = datetime.datetime.now()
+
+                        # Обрабатываем билеты
+                        for ticket_element in ticket_elements:
                             try:
-                                # Проверяем, существует ли поле ввода
-                                phone_input = driver.find_element(By.ID, "brr")
-                                print("Найдено поле ввода номера телефона.")
+                                # Находим дату поездки
+                                travel_date_text = ticket_element.find_element(
+                                    By.XPATH, ".//p[contains(text(), 'Дата поездки:')]/following-sibling::h5"
+                                ).text
+                                travel_date = datetime.datetime.strptime(travel_date_text, "%Y-%m-%d %H:%M")
 
-                                # Если клавиатура не включена, включаем
-                                if not virtual_keyboard_open:
-                                    manage_virtual_keyboard(True)
-                                    virtual_keyboard_open = True
-
-                                # Задержка перед повторной проверкой
-                                time.sleep(2)
-
-                            except NoSuchElementException:
-                                # Поле ввода номера телефона исчезло
-                                print("Поле ввода номера телефона больше не найдено. Переходим к поиску QR-кода.")
-
-                                # Если клавиатура включена, выключаем
-                                if virtual_keyboard_open:
-                                    manage_virtual_keyboard(False)
-                                    virtual_keyboard_open = False
-
-                                # Переходим к поиску QR-кода
-                                try:
-                                    # Code to find QR code and process tickets
-                                    pass
-                                except Exception as e:
-                                    print(f"Ошибка при поиске данных чека: {e}")
-                                break
-
+                                # Проверяем актуальность билета
+                                if travel_date >= current_time:
+                                    print(f"Билет актуален: {travel_date}")
+                                    # Скачиваем и печатаем
+                                    download_button = ticket_element.find_element(By.CLASS_NAME, "green_download_btn")
+                                    download_url = download_button.get_attribute("href")
+                                    process_and_print_ticket(download_url)
+                                else:
+                                    print(f"Билет не актуален: {travel_date}")
+                            except Exception as e:
+                                print(f"Ошибка при обработке билета: {e}")
+                        
+                        print('Перенапрвление!')
+                        driver.get('https://avtoticket.uz/')
+                    
                     except Exception as e:
                         print(f"Ошибка на странице восстановления билета: {e}")
+                        if current_fields_state:
+                            manage_virtual_keyboard(False)
+                            current_fields_state = False
+                        driver.get("https://avtoticket.uz")
                 
                 else:
                     if current_fields_state:
