@@ -69,17 +69,30 @@ def selenium_thread_function(command_queue, keypress_queue):
 
                 if "/tickets/" in current_url:
                     try:
-                        driver.find_element(By.ID, "nd-name0")
+                        first_input = driver.find_element(By.ID, "nd-name0")
                         driver.find_element(By.ID, "nd-tel0")
                         driver.find_element(By.ID, "nd-email0")
-                        print("Found fields for name, phone, and email")
 
-                        if not current_fields_state:
-                            command_queue.put(('open_keyboard',))
-                            current_fields_state = True
-                            geometry = position_keyboard_above_button(driver)
-                            if geometry:
-                                command_queue.put(('move_keyboard', geometry))
+                        modal_visible = False
+                        try:
+                            modal = driver.find_element(By.CLASS_NAME, "swal2-header")
+                            if modal.is_displayed():
+                                modal_visible = True
+                        except NoSuchElementException:
+                            modal_visible = False
+                        
+                        if modal_visible:
+                            if current_fields_state:
+                                command_queue.put(('close_keyboard',))
+                                current_fields_state = False
+                                        
+                        else:
+                            if not current_fields_state:
+                                command_queue.put(('open_keyboard',))
+                                current_fields_state = True
+                                geometry = position_keyboard_above_button(driver)
+                                if geometry:
+                                    command_queue.put(('move_keyboard', geometry))
 
                     except NoSuchElementException:
                         print("Input fields not found.")
