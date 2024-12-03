@@ -159,10 +159,8 @@ def selenium_thread_function(command_queue, keypress_queue):
                         
                         if not current_fields_state:
                             command_queue.put(('open_keyboard',))
+                            command_queue.put(('move_to_bottom_center',))
                             current_fields_state = True
-                            geometry = position_keyboard_above_button(driver)
-                            if geometry:
-                                command_queue.put(('move_keyboard', geometry))
                             
                     except TimeoutException:
                         if current_fields_state:

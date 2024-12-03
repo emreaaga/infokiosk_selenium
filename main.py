@@ -9,9 +9,10 @@ def main():
     command_queue = queue.Queue()
     keypress_queue = queue.Queue()
 
-    # Создаем экземпляр виртуальной клавиатуры
+    # Создаем экземпляр виртуальной клавиатуры, но не показываем ее сразу
     virtual_keyboard = VirtualKeyboard(command_queue, keypress_queue)
-    
+    virtual_keyboard.withdraw()  # Скрываем клавиатуру при старте
+
     # Запускаем поток Selenium
     selenium_thread = threading.Thread(
         target=selenium_thread_function,

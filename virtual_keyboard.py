@@ -22,7 +22,7 @@ class VirtualKeyboard(tk.Tk):
         style.theme_use("clam")
         style.configure(
             "Keyboard.TButton",
-            font=("Helvetica", 12),
+            font=("Helvetica", 16),
             padding=10,
             relief="flat",
             background="#F5F5F5",
@@ -31,7 +31,7 @@ class VirtualKeyboard(tk.Tk):
         )
         style.configure(
             "Special.TButton",
-            font=("Helvetica", 12),
+            font=("Helvetica", 16),
             padding=10,
             background="#0799e0",
             foreground="#000",
@@ -40,7 +40,7 @@ class VirtualKeyboard(tk.Tk):
         )
         style.configure(
             "Space.TButton",
-            font=("Helvetica", 12),
+            font=("Helvetica", 16),
             padding=10,
             background="#E0E0E0",
             foreground="#000",
@@ -60,26 +60,26 @@ class VirtualKeyboard(tk.Tk):
             ["Смена регистра", "Пробел", "Удалить"]
         ]
         self.keyboard_frame = ttk.Frame(self)
-        self.keyboard_frame.pack(expand=True, padx=5, pady=5)
+        self.keyboard_frame.pack(expand=True, fill="both", padx=5, pady=5)
         # Создаем ряды клавиш
         for row in keys:
             row_frame = ttk.Frame(self.keyboard_frame)
-            row_frame.pack(side="top", pady=2)
+            row_frame.pack(side="top", fill="x", pady=2)
             for key in row:
                 button = ttk.Button(
                     row_frame,
                     text=key,
                     style='Keyboard.TButton',
-                    width=5,
+                    width=4,
                     command=lambda k=key: self.key_pressed(k),
                 )
-                button.pack(side="left", padx=2)
+                button.pack(side="left", expand=True, fill="both", padx=2)
         # Добавляем дополнительные клавиши
         extra_frame = ttk.Frame(self.keyboard_frame)
-        extra_frame.pack(side="top", pady=2)
+        extra_frame.pack(side="top", fill="x", pady=2)
         for key in extra_keys[0]:
             button_style = "Space.TButton" if key == "Пробел" else "Special.TButton"
-            button_width = 35 if key == "Пробел" else 14
+            button_width = 10 if key == "Пробел" else 7
             button = ttk.Button(
                 extra_frame,
                 text=key,
@@ -87,7 +87,7 @@ class VirtualKeyboard(tk.Tk):
                 width=button_width,
                 command=lambda k=key: self.key_pressed(k),
             )
-            button.pack(side="left", padx=3)
+            button.pack(side="left", expand=True, fill="both", padx=3)
 
     def key_pressed(self, key):
         """Обрабатывает события нажатия клавиш."""
@@ -123,6 +123,19 @@ class VirtualKeyboard(tk.Tk):
         """Перемещает и изменяет размер окна клавиатуры."""
         self.geometry(geometry)
         self.update()
+    
+    def move_to_bottom_center(self):
+        """Перемещает клавиатуру вниз по центру экрана."""
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        keyboard_width = 800  # Ширина клавиатуры
+        keyboard_height = 300  # Высота клавиатуры
+
+        x = (screen_width - keyboard_width) // 2
+        y = screen_height - keyboard_height - 10  # Отступ от нижнего края
+        self.geometry(f"{keyboard_width}x{keyboard_height}+{x}+{y}")
+        self.update()
+
 
     def check_queue(self):
         """Проверяет очередь команд и выполняет их."""
@@ -136,7 +149,9 @@ class VirtualKeyboard(tk.Tk):
                 elif command[0] == 'move_keyboard':
                     geometry = command[1]
                     self.move_keyboard(geometry)
+                elif command[0] == 'move_to_bottom_center':
+                    self.move_to_bottom_center()
         except queue.Empty:
             pass
         # Планируем следующую проверку очереди
-        self.after(100, self.check_queue)
+        self.after(50, self.check_queue)
