@@ -20,12 +20,11 @@ class VirtualKeyboard(tk.Tk):
     def __init__(self, send_key_callback):
         super().__init__()
         self.title("Virtual Keyboard")
-        self.geometry("800x300")  # Чуть шире и выше
+        self.geometry("800x300")
         self.overrideredirect(True)
         self.attributes("-topmost", True)
-        self.place_at_bottom()
         self.send_key_callback = send_key_callback
-        self.caps_lock_on = False  # Индикатор состояния Caps Lock
+        self.caps_lock_on = False
         self.setup_style()
         self.create_keyboard()
 
@@ -36,7 +35,7 @@ class VirtualKeyboard(tk.Tk):
 
         style.configure(
             "Keyboard.TButton",
-            font=("Helvetica", 14),
+            font=("Helvetica", 12),
             padding=10,
             relief="flat",
             background="#F5F5F5",
@@ -46,79 +45,59 @@ class VirtualKeyboard(tk.Tk):
 
         style.configure(
             "Special.TButton",
-            font=("Helvetica", 14, "bold"),
+            font=("Helvetica", 12),
             padding=10,
-            background="#FFDDC1",
+            background="#0799e0",
             foreground="#000",
             borderwidth=0,
             relief="flat"
         )
         style.configure(
             "Space.TButton",
-            font=("Helvetica", 14),
+            font=("Helvetica", 12),
             padding=10,
             background="#E0E0E0",
             foreground="#000",
             borderwidth=0,
             relief="flat"
         )
-
-
-    def place_at_bottom(self):
-        """Places the keyboard window at the bottom of the screen."""
-        self.update_idletasks()
-        screen_width = self.winfo_screenwidth()
-        screen_height = self.winfo_screenheight()
-        window_width = 1000  # Увеличил ширину окна
-        window_height = 320
-
-        x = (screen_width - window_width) // 2
-        y = screen_height - window_height
-        self.geometry(f"{window_width}x{window_height}+{x}+{y}")
-        
     
     def create_keyboard(self):
         """Creates the virtual keyboard using ttk.Button."""
         keys = [
-            ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", "Удалить"],
+            ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0", ],
             ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"],
             ["a", "s", "d", "f", "g", "h", "j", "k", "l"],
             ["z", "x", "c", "v", "b", "n", "m", ".", ",", "@"],
         ]
         extra_keys = [
-            ["Смена регистра", "Пробел"]
+            ["Смена регистра", "Пробел", "Удалить"]
         ]
 
 
         keyboard_frame = ttk.Frame(self)
-        keyboard_frame.pack(expand=True, padx=10, pady=10)
+        keyboard_frame.pack(expand=True, padx=5, pady=5)
 
         # Создаем ряды клавиш
         for row_idx, row in enumerate(keys):
             row_frame = ttk.Frame(keyboard_frame)
-            row_frame.pack(side="top", pady=5)
+            row_frame.pack(side="top", pady=2)
             for key in row:
-                button_style = (
-                    "Special.TButton" if key in {"Удалить", "Caps Lock"} else
-                    "Space.TButton" if key == "Пробел" else
-                    "Keyboard.TButton"
-                )
-                button_width = 15 if key == "Удалить" else 35 if key == "Пробел" else 5
                 button = ttk.Button(
                     row_frame,
                     text=key,
-                    style=button_style,
-                    width=button_width,
+                    style='Keyboard.TButton',
+                    width=5,
                     command=lambda k=key: self.key_pressed(k),
                 )
-                button.pack(side="left", padx=5)
+                button.pack(side="left", padx=2)
 
-        # Добавляем дополнительные клавиши (Caps Lock и Пробел)
+        # Добавляем дополнительные клавиши (Caps Lock и Пробел, Удалить)
         extra_frame = ttk.Frame(keyboard_frame)
-        extra_frame.pack(side="top", pady=5)
+        extra_frame.pack(side="top", pady=2)
         for key in extra_keys[0]:
             button_style = "Space.TButton" if key == "Пробел" else "Special.TButton"
-            button_width = 35 if key == "Пробел" else 12
+            button_width = 35 if key == "Пробел" else 14
             button = ttk.Button(
                 extra_frame,
                 text=key,
@@ -126,7 +105,7 @@ class VirtualKeyboard(tk.Tk):
                 width=button_width,
                 command=lambda k=key: self.key_pressed(k),
             )
-            button.pack(side="left", padx=5)
+            button.pack(side="left", padx=3)
 
     def key_pressed(self, key):
         """Handles key press events."""
@@ -159,31 +138,57 @@ class VirtualKeyboard(tk.Tk):
 _keyboard_instance = None
 
 def position_keyboard_above_button(driver):
-        """Позиционирует клавиатуру выше кнопки 'Оплата'."""
+        """Позиционирует клавиатуру относительно кнопки 'Оплата' с использованием процентов."""
         try:
-            # Найти кнопку "Оплата"
-            button = driver.find_element(By.CLASS_NAME, "next_blue_btn")
+            # Найти div с инпутами
+            input_div = driver.find_element(By.CLASS_NAME, "nd_checkout")
 
-            # Получить координаты кнопки
-            button_location = button.location  # {'x': ..., 'y': ...}
-            button_y = button_location['y']  # Верхняя граница кнопки
+            # Найти div с кнопкой
+            button_div = driver.find_element(By.CLASS_NAME, "next_blue_btn")
 
-            # Параметры окна
-            screen_width = driver.execute_script("return window.innerWidth;")  # Ширина экрана
-            keyboard_width = 950
-            keyboard_height = 300
+            # Получить размеры и координаты div с инпутами
+            input_rect = driver.execute_script("""
+                const rect = arguments[0].getBoundingClientRect();
+                return {top: rect.top, left: rect.left, width: rect.width, height: rect.height};
+            """, input_div)
 
-            # Расчёт положения клавиатуры
-            x = (screen_width - keyboard_width) // 2  # Центрируем по горизонтали
-            y = max(0, button_y - keyboard_height - 20)  # Устанавливаем чуть выше кнопки
+            # Получить размеры и координаты div с кнопкой
+            button_rect = driver.execute_script("""
+                const rect = arguments[0].getBoundingClientRect();
+                return {top: rect.top, left: rect.left, width: rect.width, height: rect.height};
+            """, button_div)
 
-            # Устанавливаем новое положение клавиатуры
-            _keyboard_instance.geometry(f"{keyboard_width}x{keyboard_height}+{x}+{y}")
-            print(f"Клавиатура перемещена выше кнопки: x={x}, y={y}")
+            # Получить текущий масштаб страницы
+            scale_factor = driver.execute_script("return window.devicePixelRatio;")
+
+            # Параметры клавиатуры
+            keyboard_width = input_rect['width'] * scale_factor  # Ширина совпадает с шириной div с инпутами
+            available_space = (button_rect['top'] - (input_rect['top'] + input_rect['height'])) * scale_factor  # Свободное пространство
+            keyboard_height = min(300, max(50, available_space - 10))  # Высота клавиатуры с учетом ограничений
+
+            # Позиционировать клавиатуру
+            x = input_rect['left'] * scale_factor  # Учитываем масштаб для позиции x
+            y = (input_rect['top'] + input_rect['height'] + 5) * scale_factor  # Позиция y с отступом
+
+            # Проверить, хватает ли места
+            if available_space <= 0:
+                print("Недостаточно места для отображения клавиатуры между div с инпутами и кнопкой.")
+                return
+
+            # Убедиться, что клавиатура не выходит за пределы экрана
+            window_width = driver.execute_script("return window.innerWidth;") * scale_factor
+            window_height = driver.execute_script("return window.innerHeight;") * scale_factor
+            x = max(0, min(x, window_width - keyboard_width))
+            y = max(0, min(y, window_height - keyboard_height))
+
+            # Установить размер и положение клавиатуры
+            _keyboard_instance.geometry(f"{int(keyboard_width)}x{int(keyboard_height)}+{int(x)}+{int(y)}")
+            print(f"Клавиатура перемещена: ширина={keyboard_width}, высота={keyboard_height}, x={x}, y={y}")
         except NoSuchElementException:
-            print("Кнопка 'Оплата' не найдена. Клавиатура остаётся в стандартном положении.")
+            print("Не найден div с инпутами или кнопкой 'Оплата'.")
         except Exception as e:
             print(f"Ошибка при размещении клавиатуры: {e}")
+
 
 def start_keyboard(send_key_callback):
     """Starts the virtual keyboard."""
@@ -249,7 +254,7 @@ def selenium_thread_function():
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-software-rasterizer")
     chrome_options.add_argument("--disable-infobars")
-
+    
     driver = webdriver.Chrome(options=chrome_options)
     # driver_path = "C:\\info_kiosk\\chromedriver.exe"
     # service = Service(driver_path)
@@ -280,7 +285,7 @@ def selenium_thread_function():
                 else:
                     active_element.send_keys(key)
             except queue.Empty:
-                pass  # No key press in the last 0.1 seconds
+                pass
             except WebDriverException as e:
                 print(f"Error sending key: {e}")
 
