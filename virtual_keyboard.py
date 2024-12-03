@@ -16,6 +16,57 @@ class VirtualKeyboard(tk.Tk):
         self.command_queue = command_queue
         self.check_queue()  # Начинаем проверку очереди команд
 
+    def create_numpad(self):
+        """Создает нумпад с цифрами и кнопками подтверждения."""
+        if hasattr(self, 'numpad_frame'):
+            self.numpad_frame.destroy()  # Удаляем старый нумпад, если он есть
+
+        self.numpad_frame = ttk.Frame(self)
+        self.numpad_frame.pack(expand=True, fill="both", padx=5, pady=5)
+
+        keys = [
+            ["1", "2", "3"],
+            ["4", "5", "6"],
+            ["7", "8", "9"],
+            ["0", "Очистить", "Ввод"]
+        ]
+
+        for row in keys:
+            row_frame = ttk.Frame(self.numpad_frame)
+            row_frame.pack(side="top", fill="x", pady=2)
+            for key in row:
+                button_style = "Space.TButton" if key in ["Очистить", "Ввод"] else "Keyboard.TButton"
+                button_width = 10 if key in ["Очистить", "Ввод"] else 5
+                button = ttk.Button(
+                    row_frame,
+                    text=key,
+                    style=button_style,
+                    width=button_width,
+                    command=lambda k=key: self.numpad_key_pressed(k),
+                )
+                button.pack(side="left", expand=True, fill="both", padx=3)
+
+    def numpad_key_pressed(self, key):
+        """Обрабатывает нажатия на нумпад."""
+        if key == "Очистить":
+            self.send_key("Clear")
+        elif key == "Ввод":
+            self.send_key("Enter")
+        else:
+            self.send_key(key)
+
+    def switch_to_numpad(self):
+        """Переключает клавиатуру на нумпад."""
+        self.keyboard_frame.pack_forget()  # Скрываем основную клавиатуру
+        self.create_numpad()  # Показываем нумпад
+
+    def switch_to_keyboard(self):
+        """Переключает нумпад на основную клавиатуру."""
+        if hasattr(self, 'numpad_frame'):
+            self.numpad_frame.destroy()  # Удаляем нумпад
+        self.keyboard_frame.pack(expand=True, fill="both")  # Показываем основную клавиатуру
+
+    
     def setup_style(self):
         """Настраивает стили ttk для клавиатуры."""
         style = ttk.Style(self)
@@ -151,6 +202,10 @@ class VirtualKeyboard(tk.Tk):
                     self.move_keyboard(geometry)
                 elif command[0] == 'move_to_bottom_center':
                     self.move_to_bottom_center()
+                elif command[0] == 'switch_to_numpad':
+                    self.switch_to_numpad()
+                elif command[0] == 'switch_to_keyboard':
+                    self.switch_to_keyboard()
         except queue.Empty:
             pass
         # Планируем следующую проверку очереди

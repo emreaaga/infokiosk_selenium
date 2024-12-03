@@ -10,6 +10,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 from utils import process_and_print_ticket
+from selenium.webdriver.chrome.service import Service
 import queue
 
 
@@ -23,10 +24,10 @@ def selenium_thread_function(command_queue, keypress_queue):
     chrome_options.add_argument("--force-device-scale-factor=0.8")
     chrome_options.add_argument("--high-dpi-support=1")
     
-    driver = webdriver.Chrome(options=chrome_options)
-    # driver_path = "C:\\info_kiosk\\chromedriver.exe"
-    # service = Service(driver_path)
-    # driver = webdriver.Chrome(service=service, options=chrome_options)
+    # driver = webdriver.Chrome(options=chrome_options)
+    driver_path = "C:\\info_kiosk\\chromedriver.exe"
+    service = Service(driver_path)
+    driver = webdriver.Chrome(service=service, options=chrome_options)
     
     try:
         redirect_urls = [
@@ -69,7 +70,7 @@ def selenium_thread_function(command_queue, keypress_queue):
 
                 if "/tickets/" in current_url:
                     try:
-                        first_input = driver.find_element(By.ID, "nd-name0")
+                        driver.find_element(By.ID, "nd-name0")
                         driver.find_element(By.ID, "nd-tel0")
                         driver.find_element(By.ID, "nd-email0")
 
@@ -124,21 +125,34 @@ def selenium_thread_function(command_queue, keypress_queue):
                         except NoSuchElementException:
                             pass
 
-                        if not current_fields_state:
-                            command_queue.put(('open_keyboard',))
-                            current_fields_state = True
-                            geometry = position_keyboard_above_button(driver)
-                            if geometry:
-                                command_queue.put(('move_keyboard', geometry))
-                                
-                        elif not field_found and current_fields_state:
-                            command_queue.put(('close_keyboard',))
-                            current_fields_state = False
+                        modal_visible = False
+                        try:
+                            modal = driver.find_element(By.CLASS_NAME, "swal2-header")
+                            if modal.is_displayed():
+                                modal_visible = True
+                        except NoSuchElementException:
+                            modal_visible = False
+                        
+                        if modal_visible:
+                            if current_fields_state:
+                                command_queue.put(('close_keyboard',))
+                                command_queue.put(('switch_to_keyboard',))
+                                current_fields_state = False
+                                        
+                        else:
+                            if not current_fields_state:
+                                command_queue.put(('open_keyboard',))
+                                command_queue.put(('switch_to_numpad',))
+                                current_fields_state = True
+                                geometry = position_keyboard_above_button(driver)
+                                if geometry:
+                                    command_queue.put(('move_keyboard', geometry))
 
                     except Exception as e:
                         print(f"Error on /payment-payme/ page: {e}")
                         if current_fields_state:
                             command_queue.put(('close_keyboard',))
+                            command_queue.put(('switch_to_keyboard',))
                             current_fields_state = False
                             
                 elif "/bought-tickets/" in current_url:
