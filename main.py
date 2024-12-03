@@ -1,16 +1,27 @@
 import threading
 import tkinter as tk
-from virtual_keyboard import start_keyboard
-from selenium_controller import selenium_thread_function, send_key_callback
+from virtual_keyboard import VirtualKeyboard
+from selenium_controller import selenium_thread_function
+import queue
 
 def main():
-    # Start the virtual keyboard
-    start_keyboard(send_key_callback)
-    # Start the Selenium thread
-    selenium_thread = threading.Thread(target=selenium_thread_function, daemon=True)
+    # Создаем очереди для команд и нажатий клавиш
+    command_queue = queue.Queue()
+    keypress_queue = queue.Queue()
+
+    # Создаем экземпляр виртуальной клавиатуры
+    virtual_keyboard = VirtualKeyboard(command_queue, keypress_queue)
+    
+    # Запускаем поток Selenium
+    selenium_thread = threading.Thread(
+        target=selenium_thread_function,
+        args=(command_queue, keypress_queue),
+        daemon=True
+    )
     selenium_thread.start()
-    # Start the Tkinter event loop
-    tk.mainloop()
+    
+    # Запускаем главный цикл Tkinter
+    virtual_keyboard.mainloop()
 
 if __name__ == "__main__":
     main()

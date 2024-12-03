@@ -9,68 +9,19 @@ from selenium.common.exceptions import NoSuchElementException, WebDriverExceptio
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
-
-from virtual_keyboard import manage_virtual_keyboard, get_keyboard_instance
 from utils import process_and_print_ticket
+import queue
 
-keypress_queue = queue.Queue()
 
-def send_key_callback(key):
-    keypress_queue.put(key)
-
-def position_keyboard_above_button(driver):
-    """Positions the keyboard relative to the 'Payment' button using percentages."""
-    try:
-        input_div = driver.find_element(By.CLASS_NAME, "nd_checkout")
-
-        button_div = driver.find_element(By.CLASS_NAME, "next_blue_btn")
-
-        input_rect = driver.execute_script("""
-            const rect = arguments[0].getBoundingClientRect();
-            return {top: rect.top, left: rect.left, width: rect.width, height: rect.height};
-        """, input_div)
-
-        button_rect = driver.execute_script("""
-            const rect = arguments[0].getBoundingClientRect();
-            return {top: rect.top, left: rect.left, width: rect.width, height: rect.height};
-        """, button_div)
-
-        scale_factor = driver.execute_script("return window.devicePixelRatio;")
-
-        keyboard_width = input_rect['width'] * scale_factor
-        available_space = (button_rect['top'] - (input_rect['top'] + input_rect['height'])) * scale_factor
-        keyboard_height = min(300, max(50, available_space - 10))
-
-        x = input_rect['left'] * scale_factor
-        y = (input_rect['top'] + input_rect['height'] + 5) * scale_factor
-
-        if available_space <= 0:
-            print("Not enough space to display the keyboard between inputs and the 'Payment' button.")
-            return
-
-        window_width = driver.execute_script("return window.innerWidth;") * scale_factor
-        window_height = driver.execute_script("return window.innerHeight;") * scale_factor
-        x = max(0, min(x, window_width - keyboard_width))
-        y = max(0, min(y, window_height - keyboard_height))
-
-        keyboard_instance = get_keyboard_instance()
-        if keyboard_instance:
-            keyboard_instance.geometry(f"{int(keyboard_width)}x{int(keyboard_height)}+{int(x)}+{int(y)}")
-            print(f"Keyboard moved: width={keyboard_width}, height={keyboard_height}, x={x}, y={y}")
-        else:
-            print("Keyboard instance not found.")
-    except NoSuchElementException:
-        print("Input div or 'Payment' button not found.")
-    except Exception as e:
-        print(f"Error positioning keyboard: {e}")
-
-def selenium_thread_function():
+def selenium_thread_function(command_queue, keypress_queue):
     chrome_options = Options()
     chrome_options.add_argument("--kiosk")
     chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-software-rasterizer")
     chrome_options.add_argument("--disable-infobars")
+    chrome_options.add_argument("--force-device-scale-factor=0.8")
+    chrome_options.add_argument("--high-dpi-support=1")
     
     driver = webdriver.Chrome(options=chrome_options)
     # driver_path = "C:\\info_kiosk\\chromedriver.exe"
@@ -97,8 +48,6 @@ def selenium_thread_function():
                 active_element = driver.switch_to.active_element
                 if key == 'Backspace':
                     active_element.send_keys(Keys.BACKSPACE)
-                elif key == 'Space':
-                    active_element.send_keys(' ')
                 else:
                     active_element.send_keys(key)
             except queue.Empty:
@@ -126,14 +75,16 @@ def selenium_thread_function():
                         print("Found fields for name, phone, and email")
 
                         if not current_fields_state:
-                            manage_virtual_keyboard(True, send_key_callback)
+                            command_queue.put(('open_keyboard',))
                             current_fields_state = True
-                            position_keyboard_above_button(driver)
+                            geometry = position_keyboard_above_button(driver)
+                            if geometry:
+                                command_queue.put(('move_keyboard', geometry))
 
                     except NoSuchElementException:
                         print("Input fields not found.")
                         if current_fields_state:
-                            manage_virtual_keyboard(False)
+                            command_queue.put(('close_keyboard',))
                             current_fields_state = False
 
                 elif "/payment-payme/" in current_url:
@@ -160,17 +111,21 @@ def selenium_thread_function():
                         except NoSuchElementException:
                             pass
 
-                        if field_found and not current_fields_state:
-                            manage_virtual_keyboard(True, send_key_callback)
+                        if not current_fields_state:
+                            command_queue.put(('open_keyboard',))
                             current_fields_state = True
+                            geometry = position_keyboard_above_button(driver)
+                            if geometry:
+                                command_queue.put(('move_keyboard', geometry))
+                                
                         elif not field_found and current_fields_state:
-                            manage_virtual_keyboard(False)
+                            command_queue.put(('close_keyboard',))
                             current_fields_state = False
 
                     except Exception as e:
                         print(f"Error on /payment-payme/ page: {e}")
                         if current_fields_state:
-                            manage_virtual_keyboard(False)
+                            command_queue.put(('close_keyboard',))
                             current_fields_state = False
                             
                 elif "/bought-tickets/" in current_url:
@@ -203,12 +158,15 @@ def selenium_thread_function():
                         print("Phone number input field found.")
                         
                         if not current_fields_state:
-                            manage_virtual_keyboard(True, send_key_callback)
+                            command_queue.put(('open_keyboard',))
                             current_fields_state = True
+                            geometry = position_keyboard_above_button(driver)
+                            if geometry:
+                                command_queue.put(('move_keyboard', geometry))
                             
                     except TimeoutException:
                         if current_fields_state:
-                            manage_virtual_keyboard(False)
+                            command_queue.put(('close_keyboard',))
                             current_fields_state = False
                         
                         ticket_elements = WebDriverWait(driver, 10).until(
@@ -249,14 +207,14 @@ def selenium_thread_function():
                     except Exception as e:
                         print(f"Error on ticket recovery page: {e}")
                         if current_fields_state:
-                            manage_virtual_keyboard(False)
+                            command_queue.put(('close_keyboard',))
                             current_fields_state = False
                         driver.get("https://avtoticket.uz")
                 
                 else:
                     if current_fields_state:
                         print("Closing keyboard as the page does not require input.")
-                        manage_virtual_keyboard(False)
+                        command_queue.put(('close_keyboard',))
                         current_fields_state = False
 
     except KeyboardInterrupt:
@@ -264,5 +222,42 @@ def selenium_thread_function():
 
     finally:
         if current_fields_state:
-            manage_virtual_keyboard(False)
+            command_queue.put(('close_keyboard',))
         driver.quit()
+
+
+def position_keyboard_above_button(driver):
+    """Вычисляет геометрию для позиционирования клавиатуры относительно кнопки 'Оплата'."""
+    try:
+        input_div = driver.find_element(By.CLASS_NAME, "nd_checkout")
+        button_div = driver.find_element(By.CLASS_NAME, "next_blue_btn")
+        input_rect = driver.execute_script("""
+            const rect = arguments[0].getBoundingClientRect();
+            return {top: rect.top, left: rect.left, width: rect.width, height: rect.height};
+        """, input_div)
+        button_rect = driver.execute_script("""
+            const rect = arguments[0].getBoundingClientRect();
+            return {top: rect.top, left: rect.left, width: rect.width, height: rect.height};
+        """, button_div)
+        scale_factor = driver.execute_script("return window.devicePixelRatio;")
+        keyboard_width = input_rect['width'] * scale_factor
+        available_space = (button_rect['top'] - (input_rect['top'] + input_rect['height'])) * scale_factor
+        keyboard_height = min(300, max(50, available_space - 10))
+        x = input_rect['left'] * scale_factor
+        y = (input_rect['top'] + input_rect['height'] + 5) * scale_factor
+        if available_space <= 0:
+            print("Not enough space to display the keyboard between inputs and the 'Payment' button.")
+            return None
+        window_width = driver.execute_script("return window.innerWidth;") * scale_factor
+        window_height = driver.execute_script("return window.innerHeight;") * scale_factor
+        x = max(0, min(x, window_width - keyboard_width))
+        y = max(0, min(y, window_height - keyboard_height))
+        geometry = f"{int(keyboard_width)}x{int(keyboard_height)}+{int(x)}+{int(y)}"
+        print(f"Calculated keyboard geometry: {geometry}")
+        return geometry
+    except NoSuchElementException:
+        print("Input div or 'Payment' button not found.")
+        return None
+    except Exception as e:
+        print(f"Error positioning keyboard: {e}")
+        return None
