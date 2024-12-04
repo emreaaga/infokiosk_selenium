@@ -10,7 +10,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException
 from utils import process_and_print_ticket
-from selenium.webdriver.chrome.service import Service
+# from selenium.webdriver.chrome.service import Service
 import queue
 
 
@@ -24,10 +24,10 @@ def selenium_thread_function(command_queue, keypress_queue):
     chrome_options.add_argument("--force-device-scale-factor=0.8")
     chrome_options.add_argument("--high-dpi-support=1")
     
-    # driver = webdriver.Chrome(options=chrome_options)
-    driver_path = "C:\\info_kiosk\\chromedriver.exe"
-    service = Service(driver_path)
-    driver = webdriver.Chrome(service=service, options=chrome_options)
+    driver = webdriver.Chrome(options=chrome_options)
+    # driver_path = "C:\\info_kiosk\\chromedriver.exe"
+    # service = Service(driver_path)
+    # driver = webdriver.Chrome(service=service, options=chrome_options)
     
     try:
         redirect_urls = [
@@ -49,6 +49,12 @@ def selenium_thread_function(command_queue, keypress_queue):
                 active_element = driver.switch_to.active_element
                 if key == 'Backspace':
                     active_element.send_keys(Keys.BACKSPACE)
+                elif key == "Tab":
+                    try:
+                        next_element = driver.find_element(By.CSS_SELECTOR, "input:focus")
+                        next_element.send_keys(Keys.TAB)
+                    except NoSuchElementException:
+                        print("No next input element available.")
                 else:
                     active_element.send_keys(key)
             except queue.Empty:
@@ -59,7 +65,7 @@ def selenium_thread_function(command_queue, keypress_queue):
             # Check the page state every 2 seconds
             if time.time() - last_check_time >= page_check_interval:
                 last_check_time = time.time()
-
+                
                 current_url = driver.current_url
                 if current_url != last_url:
                     last_url = current_url
@@ -90,6 +96,7 @@ def selenium_thread_function(command_queue, keypress_queue):
                         else:
                             if not current_fields_state:
                                 command_queue.put(('open_keyboard',))
+                                command_queue.put(('switch_to_keyboard',))
                                 current_fields_state = True
                                 geometry = position_keyboard_above_button(driver)
                                 if geometry:
@@ -100,7 +107,7 @@ def selenium_thread_function(command_queue, keypress_queue):
                         if current_fields_state:
                             command_queue.put(('close_keyboard',))
                             current_fields_state = False
-
+                
                 elif "/payment-payme/" in current_url:
                     try:
                         field_found = False
@@ -136,7 +143,6 @@ def selenium_thread_function(command_queue, keypress_queue):
                         if modal_visible:
                             if current_fields_state:
                                 command_queue.put(('close_keyboard',))
-                                command_queue.put(('switch_to_keyboard',))
                                 current_fields_state = False
                                         
                         else:
@@ -187,6 +193,7 @@ def selenium_thread_function(command_queue, keypress_queue):
                         if not current_fields_state:
                             command_queue.put(('open_keyboard',))
                             command_queue.put(('move_to_bottom_center',))
+                            command_queue.put(('switch_to_numpad',))
                             current_fields_state = True
                             
                     except TimeoutException:
@@ -204,6 +211,7 @@ def selenium_thread_function(command_queue, keypress_queue):
                         
                         # Current date
                         current_time = datetime.datetime.now()
+                        print(current_time)
 
                         # Process tickets
                         for ticket_element in ticket_elements:

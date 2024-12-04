@@ -28,30 +28,32 @@ class VirtualKeyboard(tk.Tk):
             ["1", "2", "3"],
             ["4", "5", "6"],
             ["7", "8", "9"],
-            ["0", "Очистить", "Ввод"]
+            ["0", "Удалить", "Ввод"]
         ]
+        
+        button_width = 10
+        button_height = 5
 
         for row in keys:
             row_frame = ttk.Frame(self.numpad_frame)
-            row_frame.pack(side="top", fill="x", pady=2)
+            row_frame.pack(side="top", expand=True, fill="both", pady=2)
             for key in row:
-                button_style = "Space.TButton" if key in ["Очистить", "Ввод"] else "Keyboard.TButton"
-                button_width = 10 if key in ["Очистить", "Ввод"] else 5
+                button_style = "Space.TButton" if key in ["Удалить", "Ввод"] else "Keyboard.TButton"
                 button = ttk.Button(
                     row_frame,
                     text=key,
                     style=button_style,
-                    width=button_width,
                     command=lambda k=key: self.numpad_key_pressed(k),
                 )
+                # Растягиваем кнопки
                 button.pack(side="left", expand=True, fill="both", padx=3)
 
     def numpad_key_pressed(self, key):
         """Обрабатывает нажатия на нумпад."""
-        if key == "Очистить":
-            self.send_key("Clear")
+        if key == "Удалить":
+            self.send_key("Backspace")
         elif key == "Ввод":
-            self.send_key("Enter")
+            self.send_key("Tab")
         else:
             self.send_key(key)
 
@@ -206,6 +208,7 @@ class VirtualKeyboard(tk.Tk):
                     self.switch_to_numpad()
                 elif command[0] == 'switch_to_keyboard':
                     self.switch_to_keyboard()
+                
         except queue.Empty:
             pass
         # Планируем следующую проверку очереди
