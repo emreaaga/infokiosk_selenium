@@ -37,7 +37,20 @@ def selenium_thread_function(command_queue, keypress_queue):
         ]
         driver.get("https://avtoticket.uz")
         
+        def inject_interaction_script(driver):
+            driver.execute_script("""
+                window.lastInteractionTime = Date.now();
+                function resetLastInteractionTime() {
+                    window.lastInteractionTime = Date.now();
+                }
+                document.addEventListener('mousemove', resetLastInteractionTime);
+                document.addEventListener('keydown', resetLastInteractionTime);
+                document.addEventListener('click', resetLastInteractionTime);
+                document.addEventListener('touchstart', resetLastInteractionTime);
+            """)
 
+        inject_interaction_script(driver)
+    
         current_fields_state = False
         last_url = None 
         last_check_time = time.time()
@@ -57,18 +70,35 @@ def selenium_thread_function(command_queue, keypress_queue):
                         print("No next input element available.")
                 else:
                     active_element.send_keys(key)
+                # Обновляем время последнего взаимодействия
+                driver.execute_script("window.lastInteractionTime = Date.now();")
             except queue.Empty:
                 pass
             except WebDriverException as e:
                 print(f"Error sending key: {e}")
 
-            # Check the page state every 2 seconds
+            # Проверяем время последнего взаимодействия
+            try:
+                last_interaction_time_js = driver.execute_script("return window.lastInteractionTime;")
+                if last_interaction_time_js is None:
+                    last_interaction_time_js = time.time() * 1000
+                current_time_ms = time.time() * 1000
+                if current_time_ms - last_interaction_time_js >= 180000:
+                    print("User inactive for 3 minutes. Redirecting to main page.")
+                    driver.get("https://avtoticket.uz")
+                    inject_interaction_script(driver)
+                    continue  # Начинаем следующий цикл
+            except Exception as e:
+                print(f"Error checking user inactivity: {e}")
+
+            # Проверяем состояние страницы каждые 2 секунды
             if time.time() - last_check_time >= page_check_interval:
                 last_check_time = time.time()
                 
                 current_url = driver.current_url
                 if current_url != last_url:
                     last_url = current_url
+                    inject_interaction_script(driver)  # Внедряем скрипт при смене URL
 
                 if any(current_url.startswith(url.strip("/")) for url in redirect_urls):
                     driver.get("https://avtoticket.uz")
@@ -209,23 +239,23 @@ def selenium_thread_function(command_queue, keypress_queue):
                         else:
                             print(f"Found {len(ticket_elements)} tickets.")
                         
-                        # Current date
+                        # Текущее время
                         current_time = datetime.datetime.now()
                         print(current_time)
 
-                        # Process tickets
+                        # Обработка билетов
                         for ticket_element in ticket_elements:
                             try:
-                                # Find travel date
+                                # Найти дату поездки
                                 travel_date_text = ticket_element.find_element(
                                     By.XPATH, ".//p[contains(text(), 'Дата поездки:')]/following-sibling::h5"
                                 ).text
                                 travel_date = datetime.datetime.strptime(travel_date_text, "%Y-%m-%d %H:%M")
 
-                                # Check ticket validity
+                                # Проверить действительность билета
                                 if travel_date >= current_time:
                                     print(f"Valid ticket: {travel_date}")
-                                    # Download and print
+                                    # Скачиваем и печатаем
                                     download_button = ticket_element.find_element(By.CLASS_NAME, "green_download_btn")
                                     download_url = download_button.get_attribute("href")
                                     process_and_print_ticket(download_url)
@@ -236,6 +266,7 @@ def selenium_thread_function(command_queue, keypress_queue):
                         
                         print('Redirecting!')
                         driver.get('https://avtoticket.uz/')
+                        inject_interaction_script(driver)
                     
                     except Exception as e:
                         print(f"Error on ticket recovery page: {e}")
@@ -243,6 +274,7 @@ def selenium_thread_function(command_queue, keypress_queue):
                             command_queue.put(('close_keyboard',))
                             current_fields_state = False
                         driver.get("https://avtoticket.uz")
+                        inject_interaction_script(driver)
                 
                 else:
                     if current_fields_state:
