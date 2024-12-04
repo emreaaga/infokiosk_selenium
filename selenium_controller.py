@@ -23,6 +23,8 @@ def selenium_thread_function(command_queue, keypress_queue):
     chrome_options.add_argument("--disable-infobars")
     chrome_options.add_argument("--force-device-scale-factor=0.8")
     chrome_options.add_argument("--high-dpi-support=1")
+    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    chrome_options.add_experimental_option("useAutomationExtension", False)
     
     driver = webdriver.Chrome(options=chrome_options)
     # driver_path = "C:\\info_kiosk\\chromedriver.exe"
