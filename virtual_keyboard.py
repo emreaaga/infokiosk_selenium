@@ -14,6 +14,7 @@ class VirtualKeyboard(tk.Tk):
         self.setup_style()
         self.create_keyboard()
         self.command_queue = command_queue
+        self.arrow_window = None  # Инициализируем переменную для окна стрелок
         self.check_queue()  # Начинаем проверку очереди команд
 
     def create_numpad(self):
@@ -68,7 +69,6 @@ class VirtualKeyboard(tk.Tk):
             self.numpad_frame.destroy()  # Удаляем нумпад
         self.keyboard_frame.pack(expand=True, fill="both")  # Показываем основную клавиатуру
 
-    
     def setup_style(self):
         """Настраивает стили ttk для клавиатуры."""
         style = ttk.Style(self)
@@ -100,7 +100,16 @@ class VirtualKeyboard(tk.Tk):
             borderwidth=0,
             relief="flat"
         )
-        
+        style.configure(
+            "Arrow.TButton",
+            font=("Helvetica", 16),
+            padding=10,
+            background="#D3D3D3",
+            foreground="#000",
+            borderwidth=0,
+            relief="flat"
+        )
+            
     def create_keyboard(self):
         """Создает виртуальную клавиатуру с использованием ttk.Button."""
         keys = [
@@ -141,6 +150,15 @@ class VirtualKeyboard(tk.Tk):
                 command=lambda k=key: self.key_pressed(k),
             )
             button.pack(side="left", expand=True, fill="both", padx=3)
+        # Добавляем кнопку для открытия окна стрелок
+        arrows_button = ttk.Button(
+            extra_frame,
+            text="Стрелки",
+            style="Special.TButton",
+            width=7,
+            command=self.open_arrow_window
+        )
+        arrows_button.pack(side="left", expand=True, fill="both", padx=3)
 
     def key_pressed(self, key):
         """Обрабатывает события нажатия клавиш."""
@@ -162,6 +180,62 @@ class VirtualKeyboard(tk.Tk):
     def toggle_caps_lock(self):
         """Переключает состояние Caps Lock."""
         self.caps_lock_on = not self.caps_lock_on       
+        # Обновляем текст кнопки "Смена регистра" в зависимости от состояния Caps Lock
+        for child in self.keyboard_frame.winfo_children():
+            for button in child.winfo_children():
+                if button['text'] == "Смена регистра" or button['text'] == "Caps ON":
+                    if self.caps_lock_on:
+                        button.config(text="Caps ON")
+                    else:
+                        button.config(text="Смена регистра")
+    
+    def open_arrow_window(self):
+        """Создает и открывает отдельное окно с стрелками вверх и вниз."""
+        if self.arrow_window and tk.Toplevel.winfo_exists(self.arrow_window):
+        # Если окно уже открыто, просто фокусируемся на нем
+            self.arrow_window.focus()
+            return
+
+        self.arrow_window = tk.Toplevel(self)
+        self.arrow_window.title("Стрелки")
+        self.arrow_window.resizable(False, False)
+        self.arrow_window.attributes("-topmost", True)
+        self.arrow_window.overrideredirect(True)  # Убираем окно из панели задач
+
+        # Позиционируем окно стрелок по правому краю экрана, по центру
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        window_width = 100
+        window_height = 150
+        x = screen_width - window_width  # Прикрепляем к правому краю
+        y = (screen_height - window_height) // 2
+        geometry = f"{window_width}x{window_height}+{x}+{y}"
+        self.arrow_window.geometry(geometry)
+
+        # Создаем кнопки стрелок
+        up_button = ttk.Button(
+            self.arrow_window,
+            text="↑",
+            style="Arrow.TButton",
+            command=lambda: self.send_key("Up"),
+            width=5
+        )
+        up_button.pack(side="top", expand=True, fill="both", pady=(20,5), padx=10)
+
+        down_button = ttk.Button(
+            self.arrow_window,
+            text="↓",
+            style="Arrow.TButton",
+            command=lambda: self.send_key("Down"),
+            width=5
+        )
+        down_button.pack(side="top", expand=True, fill="both", pady=5, padx=10)
+
+    def close_arrow_window(self):
+        """Закрывает окно стрелок, если оно открыто."""
+        if self.arrow_window and tk.Toplevel.winfo_exists(self.arrow_window):
+            self.arrow_window.destroy()
+            self.arrow_window = None  # Сбрасываем переменную
 
     def open_keyboard(self):
         """Открывает окно виртуальной клавиатуры."""
@@ -189,7 +263,6 @@ class VirtualKeyboard(tk.Tk):
         self.geometry(f"{keyboard_width}x{keyboard_height}+{x}+{y}")
         self.update()
 
-
     def check_queue(self):
         """Проверяет очередь команд и выполняет их."""
         try:
@@ -208,6 +281,10 @@ class VirtualKeyboard(tk.Tk):
                     self.switch_to_numpad()
                 elif command[0] == 'switch_to_keyboard':
                     self.switch_to_keyboard()
+                elif command[0] == 'open_arrow_window':
+                    self.open_arrow_window()
+                elif command[0] == 'close_arrow_window':
+                    self.close_arrow_window()
                 
         except queue.Empty:
             pass

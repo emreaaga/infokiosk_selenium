@@ -57,6 +57,7 @@ def selenium_thread_function(command_queue, keypress_queue):
         last_url = None 
         last_check_time = time.time()
         page_check_interval = 2
+        arrow_window_open = False
 
         while True:
             try:
@@ -64,6 +65,10 @@ def selenium_thread_function(command_queue, keypress_queue):
                 active_element = driver.switch_to.active_element
                 if key == 'Backspace':
                     active_element.send_keys(Keys.BACKSPACE)
+                elif key == 'Up':
+                    active_element.send_keys(Keys.ARROW_UP)
+                elif key == 'Down':
+                    active_element.send_keys(Keys.ARROW_DOWN)
                 elif key == "Tab":
                     try:
                         next_element = driver.find_element(By.CSS_SELECTOR, "input:focus")
@@ -105,184 +110,195 @@ def selenium_thread_function(command_queue, keypress_queue):
                 if any(current_url.startswith(url.strip("/")) for url in redirect_urls):
                     driver.get("https://avtoticket.uz")
                     continue
-
-                if "/tickets/" in current_url:
-                    try:
-                        driver.find_element(By.ID, "nd-name0")
-                        driver.find_element(By.ID, "nd-tel0")
-                        driver.find_element(By.ID, "nd-email0")
-
-                        modal_visible = False
-                        try:
-                            modal = driver.find_element(By.CLASS_NAME, "swal2-header")
-                            if modal.is_displayed():
-                                modal_visible = True
-                        except NoSuchElementException:
-                            modal_visible = False
-                        
-                        if modal_visible:
-                            if current_fields_state:
-                                command_queue.put(('close_keyboard',))
-                                current_fields_state = False
-                                        
-                        else:
-                            if not current_fields_state:
-                                command_queue.put(('open_keyboard',))
-                                command_queue.put(('switch_to_keyboard',))
-                                current_fields_state = True
-                                geometry = position_keyboard_above_button(driver)
-                                if geometry:
-                                    command_queue.put(('move_keyboard', geometry))
-
-                    except NoSuchElementException:
-                        print("Input fields not found.")
-                        if current_fields_state:
-                            command_queue.put(('close_keyboard',))
-                            current_fields_state = False
                 
-                elif "/payment-payme/" in current_url:
-                    try:
-                        field_found = False
-                        try:
-                            driver.find_element(By.ID, "nd-name")
-                            field_found = True
-                            print("Found field: Card Number")
-                        except NoSuchElementException:
-                            pass
+                if "/trips/" in current_url:
+                    # Открываем окно стрелок, если оно еще не открыто
+                    if not arrow_window_open:
+                        command_queue.put(('open_arrow_window',))
+                        arrow_window_open = True
+                        print("Открыто окно стрелок на странице trips.")
+                else:
+                    if arrow_window_open:
+                            command_queue.put(('close_arrow_window',))
+                            arrow_window_open = False
 
+                    if "/tickets/" in current_url:
                         try:
-                            driver.find_element(By.ID, "nd-tel")
-                            field_found = True
-                            print("Found field: Card Expiry Date")
-                        except NoSuchElementException:
-                            pass
+                            driver.find_element(By.ID, "nd-name0")
+                            driver.find_element(By.ID, "nd-tel0")
+                            driver.find_element(By.ID, "nd-email0")
 
-                        try:
-                            driver.find_element(By.ID, "brr")
-                            field_found = True
-                            print("Found field: SMS Code")
-                        except NoSuchElementException:
-                            pass
-
-                        modal_visible = False
-                        try:
-                            modal = driver.find_element(By.CLASS_NAME, "swal2-header")
-                            if modal.is_displayed():
-                                modal_visible = True
-                        except NoSuchElementException:
                             modal_visible = False
-                        
-                        if modal_visible:
+                            try:
+                                modal = driver.find_element(By.CLASS_NAME, "swal2-header")
+                                if modal.is_displayed():
+                                    modal_visible = True
+                            except NoSuchElementException:
+                                modal_visible = False
+                            
+                            if modal_visible:
+                                if current_fields_state:
+                                    command_queue.put(('close_keyboard',))
+                                    current_fields_state = False
+                                            
+                            else:
+                                if not current_fields_state:
+                                    command_queue.put(('open_keyboard',))
+                                    command_queue.put(('switch_to_keyboard',))
+                                    current_fields_state = True
+                                    geometry = position_keyboard_above_button(driver)
+                                    if geometry:
+                                        command_queue.put(('move_keyboard', geometry))
+
+                        except NoSuchElementException:
+                            print("Input fields not found.")
                             if current_fields_state:
                                 command_queue.put(('close_keyboard',))
                                 current_fields_state = False
-                                        
-                        else:
-                            if not current_fields_state:
-                                command_queue.put(('open_keyboard',))
-                                command_queue.put(('switch_to_numpad',))
-                                current_fields_state = True
-                                geometry = position_keyboard_above_button(driver)
-                                if geometry:
-                                    command_queue.put(('move_keyboard', geometry))
-
-                    except Exception as e:
-                        print(f"Error on /payment-payme/ page: {e}")
-                        if current_fields_state:
-                            command_queue.put(('close_keyboard',))
-                            command_queue.put(('switch_to_keyboard',))
-                            current_fields_state = False
-                            
-                elif "/bought-tickets/" in current_url:
-                    try:
-                        ticket_elements = driver.find_elements(By.CSS_SELECTOR, "div.tickets_all_child")
-
-                        if ticket_elements:
-                            print(f"Found {len(ticket_elements)} tickets.")
-                        
-                            for ticket_element in ticket_elements:
-                                download_button = ticket_element.find_element(By.CLASS_NAME, "green_download_btn")
-                                download_url = download_button.get_attribute("href")
-
-                                process_and_print_ticket(download_url)
-
-                            driver.get("https://avtoticket.uz")
-
-                        else:
-                            print("No tickets found.")
-
-                    except Exception as e:
-                        print(f"Error processing purchased tickets page: {e}")
-
-                elif "/ticket-recovery" in current_url:
-                    print("On the ticket recovery page.")
-                    try:
-                        WebDriverWait(driver, 2).until(
-                            EC.presence_of_element_located((By.ID, "brr"))
-                        )
-                        print("Phone number input field found.")
-                        
-                        if not current_fields_state:
-                            command_queue.put(('open_keyboard',))
-                            command_queue.put(('move_to_bottom_center',))
-                            command_queue.put(('switch_to_numpad',))
-                            current_fields_state = True
-                            
-                    except TimeoutException:
-                        if current_fields_state:
-                            command_queue.put(('close_keyboard',))
-                            current_fields_state = False
-                        
-                        ticket_elements = WebDriverWait(driver, 10).until(
-                            EC.presence_of_all_elements_located((By.CLASS_NAME, "tickets_all_child"))
-                        )
-                        if not ticket_elements:
-                            print("No tickets found.")
-                        else:
-                            print(f"Found {len(ticket_elements)} tickets.")
-                        
-                        # Текущее время
-                        current_time = datetime.datetime.now()
-                        print(current_time)
-
-                        # Обработка билетов
-                        for ticket_element in ticket_elements:
+                    
+                    elif "/payment-payme/" in current_url:
+                        try:
+                            field_found = False
                             try:
-                                # Найти дату поездки
-                                travel_date_text = ticket_element.find_element(
-                                    By.XPATH, ".//p[contains(text(), 'Дата поездки:')]/following-sibling::h5"
-                                ).text
-                                travel_date = datetime.datetime.strptime(travel_date_text, "%Y-%m-%d %H:%M")
+                                driver.find_element(By.ID, "nd-name")
+                                field_found = True
+                                print("Found field: Card Number")
+                            except NoSuchElementException:
+                                pass
 
-                                # Проверить действительность билета
-                                if travel_date >= current_time:
-                                    print(f"Valid ticket: {travel_date}")
-                                    # Скачиваем и печатаем
+                            try:
+                                driver.find_element(By.ID, "nd-tel")
+                                field_found = True
+                                print("Found field: Card Expiry Date")
+                            except NoSuchElementException:
+                                pass
+
+                            try:
+                                driver.find_element(By.ID, "brr")
+                                field_found = True
+                                print("Found field: SMS Code")
+                            except NoSuchElementException:
+                                pass
+
+                            modal_visible = False
+                            try:
+                                modal = driver.find_element(By.CLASS_NAME, "swal2-header")
+                                if modal.is_displayed():
+                                    modal_visible = True
+                            except NoSuchElementException:
+                                modal_visible = False
+                            
+                            if modal_visible:
+                                if current_fields_state:
+                                    command_queue.put(('close_keyboard',))
+                                    current_fields_state = False
+                                            
+                            else:
+                                if not current_fields_state:
+                                    command_queue.put(('open_keyboard',))
+                                    command_queue.put(('switch_to_numpad',))
+                                    current_fields_state = True
+                                    geometry = position_keyboard_above_button(driver)
+                                    if geometry:
+                                        command_queue.put(('move_keyboard', geometry))
+
+                        except Exception as e:
+                            print(f"Error on /payment-payme/ page: {e}")
+                            if current_fields_state:
+                                command_queue.put(('close_keyboard',))
+                                command_queue.put(('switch_to_keyboard',))
+                                current_fields_state = False
+                                
+                    elif "/bought-tickets/" in current_url:
+                        try:
+                            ticket_elements = driver.find_elements(By.CSS_SELECTOR, "div.tickets_all_child")
+
+                            if ticket_elements:
+                                print(f"Found {len(ticket_elements)} tickets.")
+                            
+                                for ticket_element in ticket_elements:
                                     download_button = ticket_element.find_element(By.CLASS_NAME, "green_download_btn")
                                     download_url = download_button.get_attribute("href")
+
                                     process_and_print_ticket(download_url)
-                                else:
-                                    print(f"Ticket expired: {travel_date}")
-                            except Exception as e:
-                                print(f"Error processing ticket: {e}")
+
+                                driver.get("https://avtoticket.uz")
+
+                            else:
+                                print("No tickets found.")
+
+                        except Exception as e:
+                            print(f"Error processing purchased tickets page: {e}")
+
+                    elif "/ticket-recovery" in current_url:
+                        print("On the ticket recovery page.")
+                        try:
+                            WebDriverWait(driver, 2).until(
+                                EC.presence_of_element_located((By.ID, "brr"))
+                            )
+                            print("Phone number input field found.")
+                            
+                            if not current_fields_state:
+                                command_queue.put(('open_keyboard',))
+                                command_queue.put(('move_to_bottom_center',))
+                                command_queue.put(('switch_to_numpad',))
+                                current_fields_state = True
+                                
+                        except TimeoutException:
+                            if current_fields_state:
+                                command_queue.put(('close_keyboard',))
+                                current_fields_state = False
+                            
+                            ticket_elements = WebDriverWait(driver, 10).until(
+                                EC.presence_of_all_elements_located((By.CLASS_NAME, "tickets_all_child"))
+                            )
+                            if not ticket_elements:
+                                print("No tickets found.")
+                            else:
+                                print(f"Found {len(ticket_elements)} tickets.")
+                            
+                            # Текущее время
+                            current_time = datetime.datetime.now()
+                            print(current_time)
+
+                            # Обработка билетов
+                            for ticket_element in ticket_elements:
+                                try:
+                                    # Найти дату поездки
+                                    travel_date_text = ticket_element.find_element(
+                                        By.XPATH, ".//p[contains(text(), 'Дата поездки:')]/following-sibling::h5"
+                                    ).text
+                                    travel_date = datetime.datetime.strptime(travel_date_text, "%Y-%m-%d %H:%M")
+
+                                    # Проверить действительность билета
+                                    if travel_date >= current_time:
+                                        print(f"Valid ticket: {travel_date}")
+                                        # Скачиваем и печатаем
+                                        download_button = ticket_element.find_element(By.CLASS_NAME, "green_download_btn")
+                                        download_url = download_button.get_attribute("href")
+                                        process_and_print_ticket(download_url)
+                                    else:
+                                        print(f"Ticket expired: {travel_date}")
+                                except Exception as e:
+                                    print(f"Error processing ticket: {e}")
+                            
+                            print('Redirecting!')
+                            driver.get('https://avtoticket.uz/')
+                            inject_interaction_script(driver)
                         
-                        print('Redirecting!')
-                        driver.get('https://avtoticket.uz/')
-                        inject_interaction_script(driver)
+                        except Exception as e:
+                            print(f"Error on ticket recovery page: {e}")
+                            if current_fields_state:
+                                command_queue.put(('close_keyboard',))
+                                current_fields_state = False
+                            driver.get("https://avtoticket.uz")
+                            inject_interaction_script(driver)
                     
-                    except Exception as e:
-                        print(f"Error on ticket recovery page: {e}")
+                    else:
                         if current_fields_state:
+                            print("Closing keyboard as the page does not require input.")
                             command_queue.put(('close_keyboard',))
                             current_fields_state = False
-                        driver.get("https://avtoticket.uz")
-                        inject_interaction_script(driver)
-                
-                else:
-                    if current_fields_state:
-                        print("Closing keyboard as the page does not require input.")
-                        command_queue.put(('close_keyboard',))
-                        current_fields_state = False
 
     except KeyboardInterrupt:
         print("Script stopped by user.")
@@ -290,6 +306,8 @@ def selenium_thread_function(command_queue, keypress_queue):
     finally:
         if current_fields_state:
             command_queue.put(('close_keyboard',))
+        if arrow_window_open:
+                command_queue.put(('close_arrow_window',))
         driver.quit()
 
 
